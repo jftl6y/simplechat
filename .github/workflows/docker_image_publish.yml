@@ -33,7 +33,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Build the Docker image
       run:         
-        docker build . --file application/single_app/Dockerfile --tag ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER;
-        docker tag ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:latest;
-        docker push ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER;
-        docker push ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:latest;
+        docker build . --file application/single_app/Dockerfile --tag ${{ secrets.MAIN_ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER;
+        docker tag ${{ secrets.MAIN_ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER ${{ secrets.MAIN_ACR_LOGIN_SERVER }}/simple-chat:latest;
+        docker push ${{ secrets.MAIN_ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER;
+        docker push ${{ secrets.MAIN_ACR_LOGIN_SERVER }}/simple-chat:latest;
