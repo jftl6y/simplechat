@@ -42,7 +42,17 @@ jobs:
         IMAGE="${ACR_LOGIN_SERVER}/simple-chat"
         TAG="$(date +'%Y-%m-%d')_${BRANCH_TAG}_${GITHUB_RUN_NUMBER}"
 
-        docker build . --file application/single_app/Dockerfile --tag "${IMAGE}:${TAG}"
-        docker tag "${IMAGE}:${TAG}" "${IMAGE}:latest"
-        docker push "${IMAGE}:${TAG}"
-        docker push "${IMAGE}:latest"
+        BUILDER="simplechat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        docker buildx create --name "$BUILDER" --driver docker-container
+        trap 'docker buildx rm "$BUILDER"' EXIT
+
+        docker buildx build \
+          --builder "$BUILDER" \
+          --platform linux/amd64 \
+          --provenance=false \
+          --sbom=false \
+          --file application/single_app/Dockerfile \
+          --output "type=registry,oci-mediatypes=false" \
+          --tag "${IMAGE}:${TAG}" \
+          --tag "${IMAGE}:latest" \
+          .
