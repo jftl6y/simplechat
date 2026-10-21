@@ -2,6 +2,16 @@
 
 For feature-focused and fix-focused drill-downs by version, see [Features by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/features) and [Fixes by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/fixes).
 
+### **(v0.261.028)**
+
+#### Bug Fixes
+
+*   **Docker Image Publishing Registry Configuration**
+    *   Fixed invalid Docker image tags caused by the main workflow using a different registry secret for image publishing than for authentication.
+    *   Build and push now consistently use `MAIN_ACR_LOGIN_SERVER`, reject a missing registry hostname before building, and stop on the first failed command.
+    *   Preserves dated branch/run tags and `latest` publishing on the self-hosted runner.
+    *   (Ref: `docker_image_publish.yml`, `test_docker_publish_registry_secret.py`, `DOCKER_PUBLISH_REGISTRY_SECRET_FIX.md`)
+
 ### **(v0.261.027)**
 
 #### Bug Fixes

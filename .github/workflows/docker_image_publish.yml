@@ -31,9 +31,18 @@ jobs:
         echo "BRANCH_TAG=$SAFE" >> "$GITHUB_ENV"
         
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - name: Build the Docker image
-      run:         
-        docker build . --file application/single_app/Dockerfile --tag ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER;
-        docker tag ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:latest;
-        docker push ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:$(date +'%Y-%m-%d')_${BRANCH_TAG}_$GITHUB_RUN_NUMBER;
-        docker push ${{ secrets.ACR_LOGIN_SERVER }}/simple-chat:latest;
+    - name: Build and push the Docker image
+      shell: bash
+      env:
+        ACR_LOGIN_SERVER: ${{ secrets.MAIN_ACR_LOGIN_SERVER }}
+      run: |
+        set -euo pipefail
+        : "${ACR_LOGIN_SERVER:?MAIN_ACR_LOGIN_SERVER secret is missing or empty}"
+
+        IMAGE="${ACR_LOGIN_SERVER}/simple-chat"
+        TAG="$(date +'%Y-%m-%d')_${BRANCH_TAG}_${GITHUB_RUN_NUMBER}"
+
+        docker build . --file application/single_app/Dockerfile --tag "${IMAGE}:${TAG}"
+        docker tag "${IMAGE}:${TAG}" "${IMAGE}:latest"
+        docker push "${IMAGE}:${TAG}"
+        docker push "${IMAGE}:latest"
