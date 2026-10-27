@@ -3,6 +3,12 @@
 import os
 import re
 
+from admin_settings_diagnostics import (
+    admin_settings_call,
+    admin_settings_checkpoint,
+    admin_settings_stage,
+    trace_admin_settings,
+)
 from config import *
 from functions_documents import *
 from functions_authentication import *
@@ -535,8 +541,9 @@ def register_route_frontend_admin_settings(bp):
     @swagger_route(security=get_auth_security())
     @login_required
     @admin_required
+    @trace_admin_settings("admin_settings_route")
     def admin_settings():
-        settings = get_settings()
+        settings = admin_settings_call("route_get_settings", get_settings)
         settings['document_action_capabilities'] = normalize_document_action_capabilities(settings)
         admin_user = session.get('user', {})
         admin_email = admin_user.get('preferred_username', admin_user.get('email', 'unknown'))
@@ -574,12 +581,18 @@ def register_route_frontend_admin_settings(bp):
                 'created_at': None
             }
 
-        normalized_endpoints, endpoints_changed = normalize_model_endpoints(settings.get('model_endpoints', []))
+        normalized_endpoints, endpoints_changed = admin_settings_call(
+            "normalize_model_endpoints", normalize_model_endpoints, settings.get('model_endpoints', [])
+        )
         if endpoints_changed:
-            if update_settings({'model_endpoints': normalized_endpoints}, expected_etag=settings.get('_etag')):
-                settings = get_settings()
+            if admin_settings_call(
+                "save_normalized_model_endpoints", update_settings,
+                {'model_endpoints': normalized_endpoints}, expected_etag=settings.get('_etag')
+            ):
+                settings = admin_settings_call("reload_model_endpoint_settings", get_settings)
         settings['model_endpoints'] = normalized_endpoints
         frontend_model_endpoints = sanitize_model_endpoints_for_frontend(normalized_endpoints)
+        admin_settings_checkpoint("model_endpoint_defaults_ready")
 
         # (get_settings should handle this, but explicit check is safe)
         if 'require_member_of_create_group' not in settings:
@@ -621,6 +634,7 @@ def register_route_frontend_admin_settings(bp):
         settings['cosmos_throughput_resolved_account_name'] = cosmos_resource_config.get('account_name', '')
         settings['cosmos_throughput_resolved_database_name'] = cosmos_resource_config.get('database_name', '')
         settings['cosmos_throughput_cached_status'] = get_cached_cosmos_throughput_status(settings)
+        admin_settings_checkpoint("throughput_and_schedule_defaults_ready")
         # --- End NEW Default Checks ---
 
         # Ensure classification fields exist with defaults if missing in DB
@@ -705,6 +719,7 @@ def register_route_frontend_admin_settings(bp):
         settings['file_sync_redis_ready'] = file_sync_config['redis_ready']
         settings['file_sync_effective_enabled'] = file_sync_config['enable_file_sync']
         settings['file_sync_max_gb_per_run'] = max(1, int(file_sync_config['file_sync_max_bytes_per_run'] / 1073741824))
+        admin_settings_checkpoint("file_sync_defaults_ready")
         
         # --- Add default for swagger documentation ---
         if 'enable_swagger' not in settings:
@@ -754,7 +769,7 @@ def register_route_frontend_admin_settings(bp):
             # Use container-based storage for global agents instead of legacy settings
             from functions_global_agents import get_all_global_agents
             try:
-                global_agents = get_all_global_agents()
+                global_agents = admin_settings_call("load_global_agents", get_all_global_agents)
                 default_agent = next((a for a in global_agents if a.get('default_agent')), None)
                 if default_agent:
                     settings['global_selected_agent'] = {
@@ -920,6 +935,8 @@ def register_route_frontend_admin_settings(bp):
             settings['idle_warning_minutes'] = 28
         if 'idle_warning_message' not in settings:
             settings['idle_warning_message'] = "You've been inactive for a while."
+
+        admin_settings_checkpoint("route_defaults_ready")
             
         if request.method == 'GET':
             # --- Model fetching logic remains the same ---
@@ -953,7 +970,8 @@ def register_route_frontend_admin_settings(bp):
             if check_needed:
                 try:
                     # Fetch latest release from GitHub
-                    response = requests.get(
+                    response = admin_settings_call(
+                        "github_release_check", requests.get,
                         "https://github.com/microsoft/simplechat/releases", 
                         timeout=3
                     )
@@ -974,8 +992,8 @@ def register_route_frontend_admin_settings(bp):
                             new_settings['update_available'] = False
                         
                         # Update settings to persist these values
-                        if update_settings(new_settings):
-                            settings = get_settings()
+                        if admin_settings_call("save_release_check", update_settings, new_settings):
+                            settings = admin_settings_call("reload_release_check_settings", get_settings)
                 except Exception as e:
                     print(f"Error checking for updates: {e}")
                     log_event(f"Error checking for updates: {e}", level=logging.ERROR)
@@ -985,19 +1003,21 @@ def register_route_frontend_admin_settings(bp):
             update_available = _is_update_version_newer(latest_version, current_version)
             if settings.get('update_available') != update_available:
                 try:
-                    if update_settings({'update_available': update_available}):
-                        settings = get_settings()
+                    if admin_settings_call("save_update_availability", update_settings, {'update_available': update_available}):
+                        settings = admin_settings_call("reload_update_availability", get_settings)
                 except Exception as e:
                     log_event(f"Error normalizing cached update availability: {e}", level=logging.WARNING)
             
             # Get user settings for profile and navigation
             user_id = get_current_user_id()
-            user_settings = get_user_settings(user_id)
+            user_settings = admin_settings_call("load_user_settings", get_user_settings, user_id)
             settings_for_template = dict(settings)
             normalize_inbound_mcp_settings(settings_for_template)
             settings_for_template['model_endpoints'] = frontend_model_endpoints
-            audio_runtime_capabilities = get_audio_runtime_capabilities()
-            source_review_runtime_capabilities = get_source_review_runtime_capabilities()
+            audio_runtime_capabilities = admin_settings_call("audio_runtime_capabilities", get_audio_runtime_capabilities)
+            source_review_runtime_capabilities = admin_settings_call(
+                "source_review_runtime_capabilities", get_source_review_runtime_capabilities
+            )
             settings_for_template['source_review_allow_js_rendering'] = normalize_source_review_js_rendering_enabled(
                 settings_for_template.get('source_review_allow_js_rendering'),
                 source_review_runtime_capabilities,
@@ -1006,46 +1026,47 @@ def register_route_frontend_admin_settings(bp):
             settings_for_template['enhanced_citations_storage_status'] = get_enhanced_citations_storage_status()
             inbound_mcp_easy_auth_script_context = get_inbound_mcp_easy_auth_script_context(settings_for_template)
 
-            return render_template(
-                'admin_settings.html',
-                app_settings=settings_for_template,
-                settings=settings_for_template,
-                azure_environment=AZURE_ENVIRONMENT,
-                content_understanding_supported=is_content_understanding_supported_environment(),
-                content_understanding_api_version_default=CONTENT_UNDERSTANDING_API_VERSION_DEFAULT,
-                content_understanding_document_analyzer_default=CONTENT_UNDERSTANDING_DOCUMENT_ANALYZER_DEFAULT,
-                content_understanding_image_analyzer_default=CONTENT_UNDERSTANDING_IMAGE_ANALYZER_DEFAULT,
-                default_video_indexer_endpoint=video_indexer_endpoint,
-                default_video_indexer_arm_api_version=DEFAULT_VIDEO_INDEXER_ARM_API_VERSION,
-                user_settings=user_settings,
-                update_available=update_available,
-                latest_version=latest_version,
-                download_url=download_url,
-                support_latest_feature_catalog=get_support_latest_feature_catalog(),
-                support_latest_feature_release_groups=get_support_latest_feature_release_groups(),
-                support_latest_feature_release_groups_preview=get_support_latest_feature_release_groups_for_settings(settings),
-                admin_latest_feature_release_groups=get_admin_latest_feature_release_groups_for_settings(settings),
-                chunk_size_defaults=get_chunk_size_defaults(),
-                chunk_size_settings=settings.get('chunk_size', {}),
-                chunk_size_cap=get_chunk_size_cap(settings),
-                chunk_size_caps=get_chunk_size_caps_by_key(settings),
-                chunk_size_word_cap=get_embedding_safe_chunk_words(settings),
-                chunk_size_character_cap=get_embedding_safe_chunk_characters(settings),
-                chunk_size_effective=get_chunk_size_config(settings),
-                audio_runtime_capabilities=audio_runtime_capabilities,
-                source_review_runtime_capabilities=source_review_runtime_capabilities,
-                mcp_ui_enabled=is_mcp_ui_enabled(),
-                inbound_mcp_resource_path=INBOUND_MCP_RESOURCE_PATH,
-                inbound_mcp_prm_path=INBOUND_MCP_PRM_PATH,
-                inbound_mcp_easy_auth_script_context=inbound_mcp_easy_auth_script_context,
-                inbound_mcp_easy_auth_script=build_inbound_mcp_easy_auth_script(inbound_mcp_easy_auth_script_context),
-                is_vision_capable_model=is_vision_capable_model,
-                inbound_mcp_tools=get_inbound_mcp_tool_registry(),
-                # You don't need to pass deployments separately if they are added to settings['..._model']['all']
-                # gpt_deployments=gpt_deployments,
-                # embedding_deployments=embedding_deployments,
-                # image_deployments=image_deployments
-            )
+            with admin_settings_stage("render_template"):
+                return render_template(
+                    'admin_settings.html',
+                    app_settings=settings_for_template,
+                    settings=settings_for_template,
+                    azure_environment=AZURE_ENVIRONMENT,
+                    content_understanding_supported=is_content_understanding_supported_environment(),
+                    content_understanding_api_version_default=CONTENT_UNDERSTANDING_API_VERSION_DEFAULT,
+                    content_understanding_document_analyzer_default=CONTENT_UNDERSTANDING_DOCUMENT_ANALYZER_DEFAULT,
+                    content_understanding_image_analyzer_default=CONTENT_UNDERSTANDING_IMAGE_ANALYZER_DEFAULT,
+                    default_video_indexer_endpoint=video_indexer_endpoint,
+                    default_video_indexer_arm_api_version=DEFAULT_VIDEO_INDEXER_ARM_API_VERSION,
+                    user_settings=user_settings,
+                    update_available=update_available,
+                    latest_version=latest_version,
+                    download_url=download_url,
+                    support_latest_feature_catalog=get_support_latest_feature_catalog(),
+                    support_latest_feature_release_groups=get_support_latest_feature_release_groups(),
+                    support_latest_feature_release_groups_preview=get_support_latest_feature_release_groups_for_settings(settings),
+                    admin_latest_feature_release_groups=get_admin_latest_feature_release_groups_for_settings(settings),
+                    chunk_size_defaults=get_chunk_size_defaults(),
+                    chunk_size_settings=settings.get('chunk_size', {}),
+                    chunk_size_cap=get_chunk_size_cap(settings),
+                    chunk_size_caps=get_chunk_size_caps_by_key(settings),
+                    chunk_size_word_cap=get_embedding_safe_chunk_words(settings),
+                    chunk_size_character_cap=get_embedding_safe_chunk_characters(settings),
+                    chunk_size_effective=get_chunk_size_config(settings),
+                    audio_runtime_capabilities=audio_runtime_capabilities,
+                    source_review_runtime_capabilities=source_review_runtime_capabilities,
+                    mcp_ui_enabled=is_mcp_ui_enabled(),
+                    inbound_mcp_resource_path=INBOUND_MCP_RESOURCE_PATH,
+                    inbound_mcp_prm_path=INBOUND_MCP_PRM_PATH,
+                    inbound_mcp_easy_auth_script_context=inbound_mcp_easy_auth_script_context,
+                    inbound_mcp_easy_auth_script=build_inbound_mcp_easy_auth_script(inbound_mcp_easy_auth_script_context),
+                    is_vision_capable_model=is_vision_capable_model,
+                    inbound_mcp_tools=get_inbound_mcp_tool_registry(),
+                    # You don't need to pass deployments separately if they are added to settings['..._model']['all']
+                    # gpt_deployments=gpt_deployments,
+                    # embedding_deployments=embedding_deployments,
+                    # image_deployments=image_deployments
+                )
 
         if request.method == 'POST':
             form_data = request.form # Use a variable for easier access

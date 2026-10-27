@@ -51,6 +51,12 @@ Most support work on Simple Chat starts with one question: is the failure in the
 
 Simple Chat uses Flask instrumentation by default, and backend calls are logged to Application Insights. Start with the `requests` table to find the failing call, capture the `operation_Id`, and use that identifier to pivot into related exceptions.
 
+### Admin settings request hangs
+
+Version **0.261.030** adds temporary diagnostics for `GET /admin/settings` to the App Service application or container log. Filter for `[ADMIN_SETTINGS_DIAGNOSTIC]` and group lines by `request_id`. Each stage records `started`, then `completed` with `duration_ms`, or `failed` with the exception type; `checkpoint` lines mark progress through settings normalization. The innermost started stage with no matching completion or failure identifies where that request was waiting; nested stages narrow down settings storage, user settings, and template rendering. Some failures may be caught by existing fallback logic, so a failed stage does not by itself mean the request failed. These messages do not include configuration values, user identifiers, or credentials.
+
+The first `wsgi_request` marker is emitted before Flask session loading and request hooks. If it is absent, check the deployed version, log collection, and the upstream request path. If it appears but no `before_initialize_application` marker follows, inspect session loading and Flask setup. A completed route followed by no `response_headers` marker points to response finalization, including session saving. These diagnostics intentionally write directly to stderr so they do not depend on shared settings or Application Insights ingestion.
+
 ### Query failed requests
 
 ```kusto
@@ -87,4 +93,3 @@ A mixed-source answer may complete with partial coverage when one narrative retr
 5. If aggregate development telemetry is enabled, correlate `MixedSourceTelemetry` events by `request_correlation_id` and inspect only counts, mode, status, cancellation phase, and latency. Source content or identity should never appear.
 
 If cancellation occurs, no final assistant response or new generated artifact should be published. A background tabular export that was already queued is canceled through its existing export run status.
-

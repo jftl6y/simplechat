@@ -5,6 +5,7 @@ import json
 
 from flask import has_request_context
 
+from admin_settings_diagnostics import admin_settings_call, trace_admin_settings
 from config import *
 from functions_appinsights import log_event
 from functions_settings import *
@@ -204,6 +205,7 @@ def get_consent_url(msal_app=None, scopes=None, redirect_uri=None, state=None, p
     auth_url = msal_app.get_authorization_request_url(required_scopes, **auth_request_kwargs)
     return auth_url
 
+@trace_admin_settings("profile_access_token")
 def get_valid_access_token(scopes=None):
     """
     Gets a valid access token for the current user.
@@ -238,7 +240,9 @@ def get_valid_access_token(scopes=None):
 
     if account:
         # Try to get token silently (checks cache, then uses refresh token)
-        result = msal_app.acquire_token_silent(required_scopes, account=account)
+        result = admin_settings_call(
+            "profile_token_acquire_silent", msal_app.acquire_token_silent, required_scopes, account=account
+        )
         _save_cache(msal_app.token_cache) # Save cache state AFTER attempt
 
         debug_print(f"User account name: {account.get('username')}")
@@ -1209,7 +1213,7 @@ def get_user_profile_image():
     }
 
     try:
-        response = requests.get(profile_image_endpoint, headers=headers)
+        response = admin_settings_call("profile_graph_photo_get", requests.get, profile_image_endpoint, headers=headers)
         
         if response.status_code == 200:
             # Convert image to base64

@@ -2,6 +2,15 @@
 
 For feature-focused and fix-focused drill-downs by version, see [Features by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/features) and [Fixes by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/fixes).
 
+### **(v0.261.030)**
+
+#### New Features
+
+*   **Admin Settings Hang Diagnostics**
+    *   Added temporary request-correlated application log checkpoints to identify where an admin settings page request stalls, including settings storage and template rendering.
+    *   Diagnostics are available in the App Service application or container log independently of Application Insights ingestion.
+    *   (Ref: `admin_settings_diagnostics.py`, `route_frontend_admin_settings.py`, troubleshooting guide)
+
 ### **(v0.261.028)**
 
 #### Bug Fixes

@@ -14,6 +14,8 @@ from azure.cosmos.exceptions import (
 )
 from redis.exceptions import RedisError
 
+from admin_settings_diagnostics import admin_settings_call, trace_admin_settings
+
 
 SETTINGS_ID = "app_settings"
 SETTINGS_STATE_KEY = "APP_SETTINGS_STATE_V2"
@@ -51,6 +53,7 @@ class AppSettingsStore:
         if self.on_fallback is not None:
             self.on_fallback(error)
 
+    @trace_admin_settings("settings_store_cosmos_read")
     def _read_cosmos(self, session_token=None):
         headers = {}
 
@@ -80,14 +83,17 @@ class AppSettingsStore:
             raise SettingsUnavailableError("Invalid shared settings write marker.")
         return state
 
+    @trace_admin_settings("settings_store_redis_read")
     def _raw_state(self):
         if self.redis is None:
             raise SettingsUnavailableError("Configured Redis is unavailable; settings were not saved.")
         return self.redis.get(SETTINGS_STATE_KEY)
 
+    @trace_admin_settings("settings_store_redis_compare_and_set")
     def _compare_and_set(self, previous, replacement):
         return bool(self.redis.eval(COMPARE_AND_SET, 1, SETTINGS_STATE_KEY, previous or "", replacement))
 
+    @trace_admin_settings("settings_store_read")
     def read(self, *, use_cosmos=False):
         if not self.redis_required:
             return self._read_cosmos()[0]
@@ -107,6 +113,7 @@ class AppSettingsStore:
             self._fallback(error)
             return self._read_cosmos()[0]
 
+    @trace_admin_settings("settings_store_write")
     def write(self, transform, *, expected_etag=None, defaults=None):
         """Apply a change to authoritative settings, conditional on the read ETag."""
         try:
@@ -178,7 +185,8 @@ class AppSettingsStore:
 
             try:
                 if current.get("_etag"):
-                    stored = self.container.replace_item(
+                    stored = admin_settings_call(
+                        "settings_store_cosmos_replace", self.container.replace_item,
                         item=SETTINGS_ID,
                         body=candidate,
                         etag=current["_etag"],
@@ -187,7 +195,10 @@ class AppSettingsStore:
                         response_hook=capture_headers,
                     )
                 else:
-                    stored = self.container.create_item(body=candidate, response_hook=capture_headers)
+                    stored = admin_settings_call(
+                        "settings_store_cosmos_create", self.container.create_item,
+                        body=candidate, response_hook=capture_headers
+                    )
             except (CosmosAccessConditionFailedError, CosmosResourceExistsError):
                 if expected_etag is not None:
                     raise SettingsConflictError("Settings changed during the save.")

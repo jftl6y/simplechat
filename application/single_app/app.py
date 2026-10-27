@@ -32,6 +32,7 @@ from functions_content import *
 from functions_documents import *
 from functions_latest_features_nav import should_hide_latest_features_nav
 from admin_settings_nav import ADMIN_NAV, get_landing_tab_id
+from admin_settings_diagnostics import trace_admin_settings, trace_admin_settings_wsgi
 from functions_search import *
 from functions_settings import *
 from functions_mcp_server_config import is_mcp_ui_enabled
@@ -116,6 +117,8 @@ app = Flask(__name__, static_url_path='/static', static_folder='static')
 disable_flask_instrumentation = os.environ.get("DISABLE_FLASK_INSTRUMENTATION", "0")
 if not (disable_flask_instrumentation == "1" or disable_flask_instrumentation.lower() == "true"):
     FlaskInstrumentor().instrument_app(app)
+
+app.wsgi_app = trace_admin_settings_wsgi(app.wsgi_app)
 
 app.config['EXECUTOR_TYPE'] = EXECUTOR_TYPE
 app.config['EXECUTOR_MAX_WORKERS'] = EXECUTOR_MAX_WORKERS
@@ -320,6 +323,7 @@ def initialize_application(force=False):
 
 
 @app.before_request
+@trace_admin_settings("before_initialize_application")
 def ensure_application_initialized():
     initialize_application()
 
@@ -550,6 +554,7 @@ def get_request_settings():
     return request_settings
 
 @app.context_processor
+@trace_admin_settings("template_context_inject_settings")
 def inject_settings():
     settings = get_request_settings()
     public_settings = sanitize_settings_for_user(settings)
@@ -604,6 +609,7 @@ def format_datetime_filter(value):
 
 # =================== SK Hot Reload Handler ===================
 @app.before_request
+@trace_admin_settings("before_reload_kernel")
 def reload_kernel_if_needed():
     if getattr(builtins, "kernel_reload_needed", False):
         debug_print(f"[SK_LOADER] Hot reload: re-initializing Semantic Kernel and agents due to settings change.")
@@ -769,6 +775,7 @@ def _requires_same_origin_state_change_boundary():
 
 
 @app.before_request
+@trace_admin_settings("before_same_origin")
 def enforce_same_origin_for_state_changing_requests():
     """Reject authenticated browser mutations that originate off-site."""
     if not CSRF_ENFORCE_ORIGIN_FOR_UNSAFE_METHODS:
@@ -851,6 +858,7 @@ def _is_terms_of_use_exempt(path):
 
 
 @app.before_request
+@trace_admin_settings("before_terms_of_use")
 def enforce_terms_of_use():
     """Block authenticated app usage until the current terms of use is accepted."""
     if 'user' not in session:
@@ -904,6 +912,7 @@ def maybe_log_authenticated_browser_request():
     )
 
 @app.before_request
+@trace_admin_settings("before_idle_timeout_and_activity")
 def enforce_idle_session_timeout():
     """
     Enforce server-side idle session timeout for authenticated requests.
@@ -1003,6 +1012,7 @@ def enforce_idle_session_timeout():
     return None
 
 @app.after_request
+@trace_admin_settings("after_security_headers")
 def add_security_headers(response):
     """
     Add comprehensive security headers to all responses to protect against

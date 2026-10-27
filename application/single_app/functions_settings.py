@@ -6,6 +6,7 @@ import threading
 
 from flask import g, has_request_context, jsonify, request, session
 
+from admin_settings_diagnostics import admin_settings_call, trace_admin_settings
 from app_settings_store import (
     AppSettingsStore,
     COSMOS_METADATA_FIELDS,
@@ -2897,6 +2898,7 @@ def decrypt_key(encrypted_key):
         )
         return None
 
+@trace_admin_settings("get_user_settings")
 def get_user_settings(user_id, allow_cross_user=False):
     """Fetches the user settings document from Cosmos DB, ensuring email and display_name are present if possible."""
     actor_user_id = _authorize_user_settings_access(user_id, "read", allow_cross_user=allow_cross_user)
@@ -2911,7 +2913,10 @@ def get_user_settings(user_id, allow_cross_user=False):
         return cached_doc
 
     try:
-        doc = cosmos_user_settings_container.read_item(item=user_id, partition_key=user_id)
+        doc = admin_settings_call(
+            "user_settings_cosmos_read", cosmos_user_settings_container.read_item,
+            item=user_id, partition_key=user_id
+        )
         updated = False
 
         # Ensure the settings key exists for consistency downstream
@@ -2949,7 +2954,7 @@ def get_user_settings(user_id, allow_cross_user=False):
             if 'profileImage' not in doc['settings']:
                 from functions_authentication import get_user_profile_image
                 try:
-                    profile_image = get_user_profile_image()
+                    profile_image = admin_settings_call("user_profile_image", get_user_profile_image)
                     doc['settings']['profileImage'] = profile_image
                     updated = True
                 except Exception as e:
@@ -2965,7 +2970,7 @@ def get_user_settings(user_id, allow_cross_user=False):
                     updated = True
         
         if updated:
-            cosmos_user_settings_container.upsert_item(body=doc)
+            admin_settings_call("user_settings_cosmos_upsert", cosmos_user_settings_container.upsert_item, body=doc)
             _set_user_ui_settings_cache(user_id, doc)
 
         _set_request_cached_user_settings(user_id, doc)
@@ -2988,7 +2993,7 @@ def get_user_settings(user_id, allow_cross_user=False):
             # Try to fetch profile image for new user
             from functions_authentication import get_user_profile_image
             try:
-                profile_image = get_user_profile_image()
+                profile_image = admin_settings_call("user_profile_image", get_user_profile_image)
                 doc['settings']['profileImage'] = profile_image
             except Exception as e:
                 log_event(
@@ -3001,7 +3006,7 @@ def get_user_settings(user_id, allow_cross_user=False):
                 )
                 doc['settings']['profileImage'] = None
             
-        cosmos_user_settings_container.upsert_item(body=doc)
+        admin_settings_call("user_settings_cosmos_upsert", cosmos_user_settings_container.upsert_item, body=doc)
         _set_user_ui_settings_cache(user_id, doc)
         _set_request_cached_user_settings(user_id, doc)
         return _clone_user_settings_doc(doc)
@@ -3018,6 +3023,7 @@ def get_user_settings(user_id, allow_cross_user=False):
         raise # Re-raise the exception to be handled by the route
 
 
+@trace_admin_settings("get_user_ui_settings")
 def get_user_ui_settings(user_id, allow_cross_user=False):
     """Return a lightweight, cacheable subset of user settings used by shared page chrome."""
     _authorize_user_settings_access(user_id, "read UI settings", allow_cross_user=allow_cross_user)
