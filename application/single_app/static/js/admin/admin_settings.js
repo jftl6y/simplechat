@@ -9702,7 +9702,8 @@ function isFirstTimeSetup() {
     // Check for critical settings that would indicate a first-time setup
     
     // 1. No GPT models selected
-    if (!gptSelected || gptSelected.length === 0) {
+    const multiEndpointEnabled = isWalkthroughMultiEndpointEnabled();
+    if (multiEndpointEnabled ? !isStepComplete(2) || !isStepComplete(3) : !gptSelected || gptSelected.length === 0) {
         return true;
     }
     
@@ -9716,6 +9717,10 @@ function isFirstTimeSetup() {
     }
     
     // 3. Check if GPT endpoint is empty
+    if (multiEndpointEnabled) {
+        return false;
+    }
+
     const useGptApim = document.getElementById('enable_gpt_apim')?.checked || false;
     
     if (!useGptApim) {
@@ -10146,6 +10151,59 @@ function handleTabNavigation(stepNumber) {
     }
 }
 
+function isWalkthroughMultiEndpointEnabled() {
+    const toggle = document.getElementById('enable_multi_model_endpoints');
+    return toggle ? toggle.checked : window.enableMultiModelEndpoints === true;
+}
+
+function getWalkthroughModelEndpoints() {
+    const input = document.getElementById('model_endpoints_json');
+    if (!input || !input.value.trim()) {
+        return Array.isArray(window.modelEndpoints) ? window.modelEndpoints : [];
+    }
+    try {
+        const endpoints = JSON.parse(input.value);
+        if (!Array.isArray(endpoints)) {
+            console.error('Walkthrough model endpoints must be an array.');
+            return [];
+        }
+        return endpoints;
+    } catch (error) {
+        console.error('Unable to read walkthrough model endpoints:', error);
+        return [];
+    }
+}
+
+function isWalkthroughEndpointConfigured(endpoint) {
+    if (!endpoint || endpoint.enabled === false ||
+        typeof endpoint.connection?.endpoint !== 'string' ||
+        !endpoint.connection.endpoint.trim()) {
+        return false;
+    }
+
+    const auth = endpoint.auth || {};
+    const authType = String(auth.type || 'managed_identity').trim().toLowerCase();
+    if (authType === 'managed_identity') {
+        return true;
+    }
+    if (authType === 'api_key' || authType === 'key') {
+        return Boolean(endpoint.has_api_key || auth.api_key);
+    }
+    if (authType === 'service_principal') {
+        return Boolean(auth.tenant_id && auth.client_id && (endpoint.has_client_secret || auth.client_secret));
+    }
+    return false;
+}
+
+function hasWalkthroughEnabledModel(endpoint) {
+    return Array.isArray(endpoint.models) && endpoint.models.some(model =>
+        model &&
+        model.enabled !== false &&
+        [model.deploymentName, model.deployment, model.modelName, model.name]
+            .some(name => typeof name === 'string' && name.trim())
+    );
+}
+
 /**
  * Check if a step is complete by validating its required fields
  * @param {number} stepNumber - The step number to validate
@@ -10161,6 +10219,9 @@ function isStepComplete(stepNumber) {
             return true;
             
         case 2: // GPT settings
+            if (isWalkthroughMultiEndpointEnabled()) {
+                return getWalkthroughModelEndpoints().some(isWalkthroughEndpointConfigured);
+            }
             // Check if GPT endpoint is configured when required
             if (!document.getElementById('enable_gpt_apim').checked) {
                 const endpoint = document.getElementById('azure_openai_gpt_endpoint').value;
@@ -10179,6 +10240,11 @@ function isStepComplete(stepNumber) {
             return true;
             
         case 3: // GPT model selection
+            if (isWalkthroughMultiEndpointEnabled()) {
+                return getWalkthroughModelEndpoints().some(endpoint =>
+                    isWalkthroughEndpointConfigured(endpoint) && hasWalkthroughEnabledModel(endpoint)
+                );
+            }
             if (!document.getElementById('enable_gpt_apim').checked) {
                 // For direct Azure OpenAI, check if models are selected
                 return gptSelected && gptSelected.length > 0;
@@ -10332,9 +10398,10 @@ function updateStepCompletionStatus(stepNumber) {
     if (!stepElement) return;
     
     // Find badge elements in this step
-    const badges = stepElement.querySelectorAll('.badge.bg-danger');
+    const modelStep = stepNumber === 2 || stepNumber === 3;
+    const badges = stepElement.querySelectorAll(modelStep ? '.badge.bg-danger, .badge.bg-success' : '.badge.bg-danger');
     const optionalBadges = stepElement.querySelectorAll('.badge.bg-secondary');
-    const requirementAlert = stepElement.querySelector('.alert-danger');
+    const requirementAlert = stepElement.querySelector(modelStep ? '.alert-danger, .alert-success' : '.alert-danger');
     const optionalAlert = stepElement.querySelector('.alert-info');
     
     // Update next button state
@@ -10385,10 +10452,10 @@ function updateStepCompletionStatus(stepNumber) {
             // Reset alert text based on step number
             switch (stepNumber) {
                 case 2:
-                    requirementAlert.innerHTML = '<strong>Required:</strong> GPT API configuration is required for Simple Chat to function.';
+                    requirementAlert.innerHTML = '<strong>Required:</strong> Configure an enabled model endpoint and its authentication.';
                     break;
                 case 3:
-                    requirementAlert.innerHTML = '<strong>Required:</strong> Select at least one GPT model for users to use.';
+                    requirementAlert.innerHTML = '<strong>Required:</strong> Select at least one enabled chat model.';
                     break;
                 case 5:
                     requirementAlert.innerHTML = '<strong>Required:</strong> Embedding API configuration is required if workspaces are enabled.';
@@ -10465,6 +10532,14 @@ function updateStepCompletionStatus(stepNumber) {
  * Setup field change listeners for real-time validation during walkthrough
  */
 function setupWalkthroughFieldListeners() {
+    document.removeEventListener('modelEndpointsChanged', updateWalkthroughModelStep);
+    document.addEventListener('modelEndpointsChanged', updateWalkthroughModelStep);
+    const multiEndpointToggle = document.getElementById('enable_multi_model_endpoints');
+    if (multiEndpointToggle) {
+        multiEndpointToggle.removeEventListener('change', updateWalkthroughModelStep);
+        multiEndpointToggle.addEventListener('change', updateWalkthroughModelStep);
+    }
+
     // Define field groups by step number
     const fieldGroups = {
         2: [ // GPT settings
@@ -10569,7 +10644,7 @@ function setupWalkthroughFieldListeners() {
             }
         });
     }
-    
+
     // Special case for model selection buttons which are dynamically created
     // We'll use event delegation for these
     document.addEventListener('click', event => {
@@ -10581,6 +10656,13 @@ function setupWalkthroughFieldListeners() {
             setTimeout(() => updateStepCompletionStatus(5), 100);
         }
     });
+}
+
+function updateWalkthroughModelStep() {
+    const step = getCurrentWalkthroughStep();
+    if (step === 2 || step === 3) {
+        updateStepCompletionStatus(step);
+    }
 }
 
 /**

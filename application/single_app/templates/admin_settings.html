@@ -631,16 +631,16 @@
 
                     <!-- Step 2: Configure GPT Settings -->
                     <div id="walkthrough-step-2" class="walkthrough-step" style="display: none;">
-                        <h4>2. Configure GPT API Settings</h4>
-                        <p class="text-muted">Configure the Azure OpenAI GPT API settings.</p>
+                        <h4>2. Configure a Model Endpoint</h4>
+                        <p class="text-muted">Configure and enable a model endpoint and its authentication.</p>
 
                         <div class="alert alert-danger">
-                            <strong>Required:</strong> GPT API configuration is required for Simple Chat to function.
+                            <strong>Required:</strong> Configure an enabled model endpoint and its authentication.
                         </div>
 
                         <ul class="list-group mb-4">
                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span>GPT Endpoint</span>
+                                <span>Model Endpoint</span>
                                 <span class="badge bg-danger">Required</span>
                             </li>
                             <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -654,22 +654,22 @@
                             <i class="bi bi-info-circle ms-2" data-bs-toggle="tooltip" title="APIM provides an additional layer for security, monitoring, and rate limiting. Use APIM when you need centralized API governance or want to isolate direct access to your Azure OpenAI resources."></i>
                         </div>
 
-                        <p>Configure GPT API settings in the <strong>GPT</strong> tab.</p>
+                        <p>Configure your endpoint under <strong>AI Models → Model Endpoints</strong>. Save your settings to persist changes. Use the connection test to verify access.</p>
                     </div>
 
                     <!-- Step 3: Select GPT Models -->
                     <div id="walkthrough-step-3" class="walkthrough-step" style="display: none;">
-                        <h4>3. Select GPT Models</h4>
-                        <p class="text-muted">Now that you've configured the GPT API settings, fetch and select the GPT models to use.</p>
+                        <h4>3. Select Chat Models</h4>
+                        <p class="text-muted">Select at least one model on an enabled endpoint.</p>
 
                         <div class="alert alert-danger">
-                            <strong>Required:</strong> Select at least one GPT model for users to use.
+                            <strong>Required:</strong> Select at least one enabled chat model.
                         </div>
 
                         <p class="mb-4">
                             <ol>
-                                <li id="fetch-models-step">Click the <strong>"Fetch GPT Models"</strong> button to retrieve available models</li>
-                                <li>Select one or more models from the list</li>
+                                <li id="fetch-models-step">Fetch available models or add a model to your endpoint.</li>
+                                <li>Enable one or more models and save your settings.</li>
                             </ol>
                         </p>
 
@@ -678,7 +678,7 @@
                         </div>
 
                         <div class="alert alert-info">
-                            <strong>Note:</strong> Ensure the Service Principal has been assigned the Cognitive Service OpenAI User role on the Azure OpenAI endpoint.
+                            <strong>Note:</strong> For Azure OpenAI with Microsoft Entra authentication, grant the identity used for inference an appropriate role on the model resource.
                         </div>
                     </div>
 

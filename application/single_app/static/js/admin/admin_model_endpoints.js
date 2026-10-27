@@ -349,6 +349,7 @@ function updateHiddenInput() {
         return;
     }
     endpointsInput.value = JSON.stringify(modelEndpoints || []);
+    document.dispatchEvent(new Event("modelEndpointsChanged"));
 }
 
 function normalizeDefaultModelSelection(selection) {

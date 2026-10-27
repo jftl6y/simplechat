@@ -2,6 +2,15 @@
 
 For feature-focused and fix-focused drill-downs by version, see [Features by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/features) and [Fixes by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/fixes).
 
+### **(v0.261.032)**
+
+#### Bug Fixes
+
+*   **Admin Setup Walkthrough Model Endpoints**
+    *   The walkthrough now recognizes enabled model endpoints and chat models instead of requiring legacy GPT settings, so admins can continue setup with their existing configuration.
+    *   Updated the walkthrough guidance and preserved validation for legacy configurations.
+    *   (Ref: `admin_settings.js`, `admin_model_endpoints.js`, `ADMIN_SETUP_WALKTHROUGH_MODEL_ENDPOINT_FIX.md`)
+
 ### **(v0.261.031)**
 
 #### Bug Fixes
