@@ -5,13 +5,16 @@ Source Review support for bounded, policy-controlled web evidence gathering.
 
 import asyncio
 import html
-import importlib.util
 import ipaddress
 import json
 import logging
 import os
 import re
+import signal
 import socket
+import subprocess
+import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -22,6 +25,7 @@ from urllib.parse import urljoin, urlparse, urlunparse, urldefrag
 import aiohttp
 from bs4 import BeautifulSoup
 
+from admin_settings_diagnostics import admin_settings_checkpoint, admin_settings_probe_failure
 from functions_appinsights import log_event
 from functions_debug import debug_print
 
@@ -33,6 +37,7 @@ URL_ACCESS_CONTEXT_CHAT = "chat"
 URL_ACCESS_CONTEXT_WORKFLOW = "workflow"
 _SOURCE_REVIEW_RUNTIME_CAPABILITIES_CACHE: Optional[Dict[str, Any]] = None
 _SOURCE_REVIEW_RENDER_SEMAPHORE: Optional[asyncio.Semaphore] = None
+_SOURCE_REVIEW_PROBE_TIMEOUT_SECONDS = 10
 SOURCE_REVIEW_DEFAULTS = {
     "enable_url_access": False,
     "url_access_max_chat_urls_per_turn": 10,
@@ -547,31 +552,90 @@ def get_source_review_runtime_capabilities(force_refresh: bool = False) -> Dict[
         "message": "Playwright is not installed in this app runtime.",
     }
 
-    if importlib.util.find_spec("playwright") is None:
-        _SOURCE_REVIEW_RUNTIME_CAPABILITIES_CACHE = capabilities
-        return dict(capabilities)
-
-    capabilities["playwright_available"] = True
+    probe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "source_review_runtime_probe.py")
     try:
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as playwright_instance:
-            browser = playwright_instance.chromium.launch(
-                headless=True,
-                args=_get_chromium_launch_args(),
-                timeout=5000,
+        with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as output:
+            process = subprocess.Popen(
+                [sys.executable, probe_path, json.dumps(_get_chromium_launch_args())],
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.DEVNULL,
+                start_new_session=(os.name != "nt"),
             )
-            browser.close()
+            try:
+                exit_code = process.wait(timeout=_SOURCE_REVIEW_PROBE_TIMEOUT_SECONDS)
+                timed_out = False
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                _stop_source_review_probe(process)
+                exit_code = None
+            output.seek(0)
+            probe_output = output.read().splitlines()
+            capabilities["playwright_available"] = "PLAYWRIGHT_AVAILABLE" in probe_output
+    except OSError as error:
+        admin_settings_probe_failure("source_review_probe_start", type(error).__name__)
+        capabilities["message"] = "Unable to start the Playwright runtime check."
+        return capabilities
+
+    if timed_out:
+        admin_settings_checkpoint("source_review_probe_timed_out")
+        last_phase = next(
+            (phase for phase in reversed(("import", "startup", "launch", "close", "shutdown"))
+             if f"PHASE_{phase.upper()}" in probe_output),
+            None,
+        )
+        if last_phase is not None:
+            admin_settings_checkpoint(f"source_review_probe_{last_phase}_timed_out")
+        admin_settings_probe_failure("source_review_probe_timeout")
+        capabilities["message"] = (
+            "Playwright runtime check timed out. JavaScript rendering is unavailable until the check succeeds."
+        )
+        return capabilities
+    if exit_code == 0 and capabilities["playwright_available"]:
         capabilities.update({
             "js_rendering_available": True,
             "chromium_launch_available": True,
             "message": "Playwright Chromium launch verified for this runtime.",
         })
-    except Exception as runtime_error:
-        capabilities["message"] = f"Playwright is installed, but Chromium launch failed: {str(runtime_error)[:220]}"
+    elif exit_code != 2:
+        error_type = next(
+            (line.removeprefix("ERROR_TYPE=") for line in probe_output if line.startswith("ERROR_TYPE=")),
+            None,
+        )
+        admin_settings_probe_failure("source_review_probe", error_type)
+        capabilities["message"] = "Playwright runtime check failed. Check the server logs."
 
     _SOURCE_REVIEW_RUNTIME_CAPABILITIES_CACHE = capabilities
     return dict(capabilities)
+
+
+def _stop_source_review_probe(process: subprocess.Popen) -> None:
+    """Terminate the probe and its browser/driver descendants after a timeout."""
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+                check=False,
+            )
+            if result.returncode != 0 and process.poll() is None:
+                admin_settings_probe_failure("source_review_probe_tree_termination")
+                process.kill()
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except (OSError, subprocess.TimeoutExpired) as error:
+        admin_settings_probe_failure("source_review_probe_tree_termination", type(error).__name__)
+        if process.poll() is None:
+            process.kill()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        admin_settings_probe_failure("source_review_probe_termination")
 
 
 def _get_chromium_launch_args() -> List[str]:

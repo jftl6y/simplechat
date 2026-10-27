@@ -2,7 +2,7 @@
 # test_admin_settings_hang_diagnostics.py
 """
 Functional tests for admin settings hang diagnostics.
-Version: 0.261.030
+Version: 0.261.031
 Implemented in: 0.261.030
 
 These tests verify request-scoped stage markers, blocking behavior, failure
@@ -147,6 +147,12 @@ class AdminSettingsHangDiagnosticsTests(unittest.TestCase):
         self.assertEqual(post.status_code, 200)
         self.assertEqual(other.status_code, 200)
         self.assertEqual(self.output.getvalue(), "")
+
+    def test_probe_failure_is_visible_outside_traced_get(self):
+        diagnostics.admin_settings_probe_failure("source_review_probe_start", "OSError")
+        text = self.output.getvalue()
+        self.assertIn("stage=source_review_probe_start event=failed error_type=OSError", text)
+        self.assertNotIn("request_id=", text)
 
     def test_concurrent_requests_have_separate_correlation_ids(self):
         barrier = threading.Barrier(2)

@@ -57,6 +57,8 @@ Version **0.261.030** adds temporary diagnostics for `GET /admin/settings` to th
 
 The first `wsgi_request` marker is emitted before Flask session loading and request hooks. If it is absent, check the deployed version, log collection, and the upstream request path. If it appears but no `before_initialize_application` marker follows, inspect session loading and Flask setup. A completed route followed by no `response_headers` marker points to response finalization, including session saving. These diagnostics intentionally write directly to stderr so they do not depend on shared settings or Application Insights ingestion.
 
+From version **0.261.031**, Source Review's Playwright runtime probe has a ten-second deadline. A `source_review_probe_timed_out` checkpoint indicates that the check exceeded it; an accompanying phase-specific checkpoint identifies import, startup, launch, close, or shutdown when available. The page reports JavaScript rendering as unavailable when the check does not succeed. The timed-out result is not cached, so a later request retries. Saving settings while runtime support is unavailable can disable the saved JavaScript-rendering option.
+
 ### Query failed requests
 
 ```kusto

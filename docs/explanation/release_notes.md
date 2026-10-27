@@ -2,6 +2,15 @@
 
 For feature-focused and fix-focused drill-downs by version, see [Features by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/features) and [Fixes by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/fixes).
 
+### **(v0.261.031)**
+
+#### Bug Fixes
+
+*   **Admin Settings Source Review Runtime Check**
+    *   Prevented a stalled Playwright runtime check from indefinitely blocking Admin Settings by running the check in an isolated process with a ten-second deadline.
+    *   When the check times out, JavaScript rendering is reported as unavailable and can be retried on a later request. Saving settings while it is unavailable can disable the saved JavaScript-rendering option.
+    *   (Ref: `functions_source_review.py`, `source_review_runtime_probe.py`, `ADMIN_SETTINGS_SOURCE_REVIEW_PROBE_HANG_FIX.md`)
+
 ### **(v0.261.030)**
 
 #### New Features

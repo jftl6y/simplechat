@@ -19,11 +19,14 @@ if not any(getattr(handler, "_admin_settings_diagnostic", False) for handler in 
     _logger.addHandler(_handler)
 
 
-def _emit(stage, event, duration_ms=None, error_type=None, status_code=None):
+def _emit(stage, event, duration_ms=None, error_type=None, status_code=None, force=False):
     request_id = _request_id.get()
-    if request_id is None:
+    if request_id is None and not force:
         return
-    message = f"[ADMIN_SETTINGS_DIAGNOSTIC] request_id={request_id} stage={stage} event={event}"
+    message = "[ADMIN_SETTINGS_DIAGNOSTIC]"
+    if request_id is not None:
+        message += f" request_id={request_id}"
+    message += f" stage={stage} event={event}"
     if duration_ms is not None:
         message += f" duration_ms={duration_ms}"
     if error_type is not None:
@@ -56,6 +59,11 @@ def admin_settings_call(stage, function, *args, **kwargs):
 
 def admin_settings_checkpoint(stage):
     _emit(stage, "checkpoint")
+
+
+def admin_settings_probe_failure(stage, error_type=None):
+    # Avoid settings-backed logging while reporting a potentially blocked settings request.
+    _emit(stage, "failed", error_type=error_type, force=True)
 
 
 def trace_admin_settings(stage):
