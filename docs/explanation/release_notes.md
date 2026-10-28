@@ -2,6 +2,14 @@
 
 For feature-focused and fix-focused drill-downs by version, see [Features by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/features) and [Fixes by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/fixes).
 
+### **(v0.261.034)**
+
+#### Bug Fixes
+
+*   **Commercial Mail Build Dependency Conflict**
+    *   Corrected an incompatible cryptography dependency that prevented the container build from resolving its Python packages alongside the Snowflake connector.
+    *   (Ref: `requirements.txt`, `COMMERCIAL_GRAPH_CRYPTOGRAPHY_DEPENDENCY_FIX.md`)
+
 ### **(v0.261.033)**
 
 #### New Features
