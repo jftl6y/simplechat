@@ -2,6 +2,15 @@
 
 For feature-focused and fix-focused drill-downs by version, see [Features by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/features) and [Fixes by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/fixes).
 
+### **(v0.261.033)**
+
+#### New Features
+
+*   **Linked Commercial Microsoft Graph Mail**
+    *   Users can connect their commercial Microsoft 365 mailbox separately from their SimpleChat sign-in and use an agent to read messages or create drafts for review and sending in Outlook.
+    *   Connections are session-bound and support the configured Redis session backend or filesystem fallback. Commercial mail does not support automatic or delayed sending.
+    *   (Ref: `commercial_graph_connection.py`, `msgraph_plugin.py`, `COMMERCIAL_GRAPH_MAIL_CONNECTION.md`)
+
 ### **(v0.261.032)**
 
 #### Bug Fixes

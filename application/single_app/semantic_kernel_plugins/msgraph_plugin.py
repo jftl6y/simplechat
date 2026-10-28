@@ -3,12 +3,13 @@
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import requests
 from flask import g, has_request_context
 from requests import RequestException
 
+from commercial_graph_connection import commercial_graph_token
 from functions_authentication import get_current_user_info, get_valid_access_token_for_plugins
 from functions_debug import debug_print
 from semantic_kernel.functions import kernel_function
@@ -61,6 +62,7 @@ class MSGraphPlugin(BasePlugin):
         self._metadata = self.manifest.get("metadata", {})
         self._endpoint = str(self.manifest.get("endpoint") or self.DEFAULT_ENDPOINT).rstrip("/")
         additional_fields = self.manifest.get("additionalFields") if isinstance(self.manifest.get("additionalFields"), dict) else {}
+        self._connection_type = additional_fields.get("msgraph_connection", "signed_in")
         scope_overrides = self.manifest.get("scopes") or self._metadata.get("scopes") or {}
         self._scope_overrides = scope_overrides if isinstance(scope_overrides, dict) else {}
         self._capabilities = normalize_msgraph_capabilities(
@@ -115,7 +117,7 @@ class MSGraphPlugin(BasePlugin):
                     {
                         "name": "select_fields",
                         "type": "str",
-                        "description": "Optional comma-separated Graph fields to include.",
+                        "description": "Optional comma-separated Graph fields to include, such as body to read message content.",
                         "required": False,
                     }
                 ],
@@ -208,7 +210,11 @@ class MSGraphPlugin(BasePlugin):
             },
             "send_mail": {
                 "name": "send_mail",
-                "description": "Create or send an email from the signed-in user's mailbox using this action's configured delivery mode: manual draft, delayed delivery, or automatic send.",
+                "description": (
+                    "Create an unsent draft in the linked commercial mailbox for review in Outlook."
+                    if self._connection_type == "commercial_mail"
+                    else "Create or send an email from the signed-in user's mailbox using this action's configured delivery mode: manual draft, delayed delivery, or automatic send."
+                ),
                 "parameters": [
                     {
                         "name": "to_recipients",
@@ -309,10 +315,17 @@ class MSGraphPlugin(BasePlugin):
         }
 
     def get_functions(self) -> List[str]:
+        if self._connection_type == "commercial_mail":
+            allowed_functions = {"get_my_messages", "send_mail"}
+        elif self._connection_type == "signed_in":
+            allowed_functions = self._enabled_function_names
+        else:
+            allowed_functions = set()
         return [
             definition["function_name"]
             for definition in MSGRAPH_CAPABILITY_DEFINITIONS
             if definition["function_name"] in self._enabled_function_names
+            and definition["function_name"] in allowed_functions
         ]
 
     def get_kernel_plugin(self, plugin_name: str = "msgraph") -> KernelPlugin:
@@ -339,8 +352,16 @@ class MSGraphPlugin(BasePlugin):
         return default_scopes
 
     def _get_token(self, operation_name: str, default_scopes: List[str]) -> Tuple[Optional[str], List[str], Optional[Dict[str, Any]]]:
-        scopes = self._get_scopes(operation_name, default_scopes)
-        token_result = get_valid_access_token_for_plugins(scopes=scopes)
+        if self._connection_type == "commercial_mail":
+            if operation_name not in {"get_my_messages", "send_mail"}:
+                return None, [], self._invalid_parameter_error(operation_name, "This operation is not available for commercial mail connections.")
+            scopes = default_scopes
+            token_result = commercial_graph_token(scopes)
+        elif self._connection_type == "signed_in":
+            scopes = self._get_scopes(operation_name, default_scopes)
+            token_result = get_valid_access_token_for_plugins(scopes=scopes)
+        else:
+            return None, [], self._invalid_parameter_error(operation_name, "Invalid Microsoft Graph connection type.")
         if isinstance(token_result, dict) and token_result.get("access_token"):
             return token_result["access_token"], scopes, None
 
@@ -823,6 +844,13 @@ class MSGraphPlugin(BasePlugin):
         additional_headers: Optional[Dict[str, str]] = None,
         expect_json_response: bool = True,
     ) -> Dict[str, Any]:
+        if self._connection_type == "commercial_mail":
+            is_read = operation_name == "get_my_messages" and method.upper() == "GET" and path.startswith("/v1.0/me/")
+            is_draft = operation_name == "send_mail" and method.upper() == "POST" and path == "/v1.0/me/messages"
+            if not (is_read or is_draft):
+                return self._invalid_parameter_error(operation_name, "Only mail reading and draft creation are available for commercial mail connections.")
+            if self._endpoint != self.DEFAULT_ENDPOINT:
+                return self._invalid_parameter_error(operation_name, "Commercial mail requires the standard Microsoft Graph endpoint.")
         token, scopes, token_error = self._get_token(operation_name, default_scopes)
         if token_error:
             debug_print(f"[MS_GRAPH_PLUGIN] {operation_name} token acquisition failed: {token_error}")
@@ -844,6 +872,10 @@ class MSGraphPlugin(BasePlugin):
         last_next_link = None
 
         while next_url and pages_fetched < self.MAX_PAGES_PER_REQUEST:
+            if self._connection_type == "commercial_mail":
+                parsed_url = urlsplit(next_url)
+                if parsed_url.scheme != "https" or parsed_url.netloc != "graph.microsoft.com":
+                    return self._invalid_parameter_error(operation_name, "Microsoft Graph returned an invalid continuation URL.")
             request_params = next_params if next_url == url else None
             try:
                 debug_print(f"[MS_GRAPH_PLUGIN] {operation_name} requesting {next_url} params={request_params}")
@@ -854,6 +886,7 @@ class MSGraphPlugin(BasePlugin):
                     params=request_params,
                     json=json_body,
                     timeout=self.DEFAULT_TIMEOUT_SECONDS,
+                    **({"allow_redirects": False} if self._connection_type == "commercial_mail" else {}),
                 )
             except requests.Timeout as ex:
                 return self._build_graph_error(
@@ -871,6 +904,8 @@ class MSGraphPlugin(BasePlugin):
                 )
 
             pages_fetched += 1
+            if self._connection_type == "commercial_mail" and 300 <= response.status_code < 400:
+                return self._invalid_parameter_error(operation_name, "Microsoft Graph returned an unexpected redirect.")
             if response.status_code >= 400:
                 return self._build_graph_error(operation_name, scopes, response=response)
 
@@ -1217,9 +1252,12 @@ class MSGraphPlugin(BasePlugin):
         select_fields: str = "",
     ) -> dict:
         filter_query = "isRead eq false" if unread_only else ""
+        default_fields = "id,subject,from,receivedDateTime,isRead,importance,webLink"
+        if self._connection_type == "commercial_mail":
+            default_fields += ",bodyPreview"
         params, headers = self._build_odata_params(
             top=top,
-            select_fields=select_fields or "id,subject,from,receivedDateTime,isRead,importance,webLink",
+            select_fields=select_fields or default_fields,
             filter_query=filter_query,
             order_by="receivedDateTime desc",
         )
@@ -1273,7 +1311,7 @@ class MSGraphPlugin(BasePlugin):
         )
 
     @plugin_function_logger("MSGraphPlugin")
-    @kernel_function(description="Create or send an email from the signed-in user's mailbox using this action's configured delivery mode.")
+    @kernel_function(description="Create a draft or send an email according to the action's delivery mode. Commercial mail connections create drafts only.")
     def send_mail(
         self,
         to_recipients: Any,
@@ -1336,6 +1374,29 @@ class MSGraphPlugin(BasePlugin):
             message_payload["ccRecipients"] = cc_payload
         if bcc_payload:
             message_payload["bccRecipients"] = bcc_payload
+
+        if self._connection_type == "commercial_mail":
+            draft_result = self._perform_graph_request(
+                operation_name,
+                "POST",
+                "/v1.0/me/messages",
+                ["Mail.ReadWrite"],
+                json_body=message_payload,
+            )
+            if not isinstance(draft_result, dict) or draft_result.get("error"):
+                return draft_result
+            if not str(draft_result.get("id") or "").strip():
+                return self._invalid_parameter_error(
+                    operation_name,
+                    "Graph did not return a draft ID. Check Outlook before trying again.",
+                )
+            draft_result.update({
+                "operation": operation_name,
+                "delivery_mode": MSGRAPH_MAIL_SEND_MODE_DRAFT_MANUAL,
+                "mail_send_status": "draft_created",
+                "message": "Draft created in your commercial mailbox. Review and send it from Outlook.",
+            })
+            return draft_result
 
         if self._mail_send_mode == MSGRAPH_MAIL_SEND_MODE_AUTO_SEND:
             send_result = self._perform_graph_request(

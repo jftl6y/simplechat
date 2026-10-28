@@ -758,6 +758,14 @@
             aria-labelledby="profile-settings-tab"
         >
 
+    <div class="section-card" id="commercial-mail">
+        <h5>Commercial Microsoft 365 mail</h5>
+        <p class="text-muted">Connect your commercial mailbox separately from your SimpleChat sign-in. This session can read mail and create drafts; send drafts from Outlook.</p>
+        <div id="commercial-mail-status" class="alert alert-secondary" role="status" aria-live="polite">Checking connection...</div>
+        <button type="button" class="btn btn-primary" id="commercial-mail-connect" disabled>Connect Microsoft 365</button>
+        <button type="button" class="btn btn-outline-secondary" id="commercial-mail-disconnect" disabled>Disconnect</button>
+    </div>
+
     {% set font_size_preference = user_settings.get('settings', {}).get('fontSizePreference', 'm') %}
     {% if font_size_preference not in ['xs', 's', 'm', 'l', 'xl'] %}
         {% set font_size_preference = 'm' %}
@@ -4865,5 +4873,6 @@ async function saveTTSSettings() {
 {% endif %}
 </script>
 <script src="{{ url_for('static', filename='js/profile/profile-tabs.js') }}"></script>
+<script src="{{ url_for('static', filename='js/profile/commercial-mail.js') }}?v={{ config['VERSION'] }}"></script>
 
 {% endblock %}

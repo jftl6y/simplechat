@@ -66,6 +66,7 @@ REGISTERED_BLUEPRINT_POLICIES = {
     "backend_workflows": ("login_required", "user_required"),
     "backend_workspace_identities": ("login_required",),
     "custom_pages": ("login_required",),
+    "commercial_graph": ("login_required", "user_required"),
     "enhanced_citations": ("login_required", "user_required"),
     "external_health": (),
     "external_no_auth_health": (),

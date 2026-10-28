@@ -704,6 +704,15 @@
             </div>
 
             <div class="simplechat-config-card">
+              <label for="msgraph-connection-type" class="form-label">Microsoft 365 connection</label>
+              <select class="form-select" id="msgraph-connection-type">
+                <option value="signed_in">SimpleChat sign-in account</option>
+                <option value="commercial_mail">Linked commercial mail account</option>
+              </select>
+              <div class="form-text">The commercial connection only supports reading mail and creating drafts. Users connect their own accounts in Profile settings and send drafts from Outlook.</div>
+            </div>
+
+            <div class="simplechat-config-card">
               <div class="config-section-label">
                 <i class="bi bi-calendar3 me-2"></i>Default Microsoft Graph Capabilities
               </div>

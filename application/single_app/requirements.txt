@@ -16,6 +16,7 @@ defusedxml==0.7.1
 lxml==6.1.2
 azure-cosmos==4.9.0
 msal==1.33.0
+cryptography==47.0.0
 Flask-Session==0.8.0
 azure-ai-documentintelligence==1.0.2
 numpy==2.1.1

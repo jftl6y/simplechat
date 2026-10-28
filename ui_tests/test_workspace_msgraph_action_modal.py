@@ -120,6 +120,15 @@ def test_workspace_msgraph_action_modal(playwright):
         expect(page.locator("#msgraph-mail-send-mode")).to_be_visible()
         expect(page.locator("#msgraph-calendar-send-mode")).to_be_visible()
 
+        page.locator("#msgraph-connection-type").select_option("commercial_mail")
+        expect(page.get_by_text("Create mail drafts", exact=True)).to_be_visible()
+        expect(page.locator("#msgraph-capability-get_my_messages")).to_be_visible()
+        expect(page.locator("#msgraph-capability-create_calendar_invite")).to_be_hidden()
+        expect(page.locator("#msgraph-mail-send-mode")).to_be_hidden()
+        page.locator("#msgraph-connection-type").select_option("signed_in")
+        expect(page.locator("#msgraph-mail-send-mode")).to_be_visible()
+        expect(page.locator("#msgraph-calendar-send-mode")).to_be_visible()
+
         get_profile_toggle = page.locator("#msgraph-capability-get_my_profile")
         security_alerts_toggle = page.locator("#msgraph-capability-get_my_security_alerts")
         create_invite_toggle = page.locator("#msgraph-capability-create_calendar_invite")

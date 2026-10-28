@@ -98,6 +98,11 @@ from route_backend_tts import register_route_backend_tts
 from route_backend_collaboration import register_route_backend_collaboration
 from route_backend_data_management import register_route_backend_data_management
 from route_backend_msgraph_pending_actions import register_route_backend_msgraph_pending_actions
+from commercial_graph_connection import (
+    capture_commercial_graph_session,
+    register_commercial_graph_routes,
+    revoke_cleared_commercial_graph_session,
+)
 from route_inbound_mcp import register_route_inbound_mcp
 from route_enhanced_citations import register_enhanced_citations_routes
 from plugin_validation_endpoint import plugin_validation_admin_bp, plugin_validation_bp
@@ -168,6 +173,7 @@ register_route_blueprint('openapi', register_openapi_routes, user_required_bluep
 
 # Register Enhanced Citations routes
 register_route_blueprint('enhanced_citations', register_enhanced_citations_routes, user_required_blueprint)
+register_route_blueprint('commercial_graph', register_commercial_graph_routes, user_required_blueprint)
 
 # Register Speech routes
 register_route_blueprint('backend_speech', register_route_backend_speech, user_required_blueprint)
@@ -327,6 +333,8 @@ def initialize_application(force=False):
 def ensure_application_initialized():
     initialize_application()
 
+app.before_request(capture_commercial_graph_session)
+app.after_request(revoke_cleared_commercial_graph_session)
 
 def get_idle_timeout_settings(settings=None):
     """
@@ -440,6 +448,22 @@ def is_idle_timeout_enabled(settings=None):
         return enabled_raw.strip().lower() in ('1', 'true', 'yes', 'on')
 
     return bool(enabled_raw)
+
+
+def commercial_graph_session_active(saved_session):
+    settings = get_settings()
+    if not is_idle_timeout_enabled(settings):
+        return True
+    try:
+        last_activity = float(saved_session['last_activity_epoch'])
+        now = time.time()
+        timeout_minutes, _ = get_idle_timeout_settings(settings)
+        return last_activity <= now + 60 and now - last_activity < timeout_minutes * 60
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+app.config['COMMERCIAL_GRAPH_SESSION_ACTIVE'] = commercial_graph_session_active
 
 
 settings_source_counters = {}

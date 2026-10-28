@@ -717,6 +717,7 @@ export class PluginModalStepper {
   }
 
   bindEvents() {
+    document.getElementById('msgraph-connection-type')?.addEventListener('change', () => this.updateMsGraphConnectionVisibility());
     // Step navigation buttons
     document.getElementById('plugin-modal-next').addEventListener('click', () => this.nextStep());
     document.getElementById('plugin-modal-prev').addEventListener('click', () => this.prevStep());
@@ -986,6 +987,8 @@ export class PluginModalStepper {
   async showModal(plugin = null) {
     this.isEditMode = !!plugin;
     this.selectedType = plugin?.type || null;
+    const graphConnection = document.getElementById('msgraph-connection-type');
+    if (graphConnection) graphConnection.value = 'signed_in';
 
     // Store original plugin state for change tracking
     this.originalPlugin = plugin ? JSON.parse(JSON.stringify(plugin)) : null;
@@ -1539,7 +1542,8 @@ export class PluginModalStepper {
           [definition.key]: checkbox.checked
         };
         if (deliveryOptions) {
-          deliveryOptions.classList.toggle('d-none', !checkbox.checked);
+          const commercialMail = document.getElementById('msgraph-connection-type')?.value === 'commercial_mail';
+          deliveryOptions.classList.toggle('d-none', !checkbox.checked || commercialMail);
         }
       });
 
@@ -1553,6 +1557,28 @@ export class PluginModalStepper {
 
     this.updateMsGraphMailDelayVisibility();
     this.updateMsGraphCalendarDelayVisibility();
+    this.updateMsGraphConnectionVisibility();
+  }
+
+  updateMsGraphConnectionVisibility() {
+    const commercial = document.getElementById('msgraph-connection-type')?.value === 'commercial_mail';
+    MSGRAPH_CAPABILITY_DEFINITIONS.forEach(definition => {
+      const checkbox = document.getElementById(`msgraph-capability-${definition.key}`);
+      if (!checkbox) return;
+      const allowed = ['get_my_messages', 'send_mail'].includes(definition.key);
+      checkbox.closest('.form-check')?.classList.toggle('d-none', commercial && !allowed);
+    });
+    const mailOptions = document.getElementById('msgraph-delivery-send_mail-options');
+    const mailEnabled = document.getElementById('msgraph-capability-send_mail')?.checked;
+    mailOptions?.classList.toggle('d-none', commercial || !mailEnabled);
+    const mailLabel = document.querySelector('label[for="msgraph-capability-send_mail"]');
+    if (mailLabel) {
+      const definition = MSGRAPH_CAPABILITY_DEFINITIONS.find(item => item.key === 'send_mail');
+      const title = mailLabel.querySelector('.fw-medium');
+      const description = mailLabel.querySelector('.text-muted');
+      if (title) title.textContent = commercial ? 'Create mail drafts' : definition.label;
+      if (description) description.textContent = commercial ? 'Create drafts to review and send in Outlook.' : definition.description;
+    }
   }
 
   setMsGraphCapabilities(rawCapabilities = null) {
@@ -4457,14 +4483,20 @@ export class PluginModalStepper {
           }
         } else if (isMsGraphVisible) {
           const selectedMsGraphCapabilities = this.getSelectedMsGraphCapabilities();
+          const connectionType = document.getElementById('msgraph-connection-type')?.value ?? 'signed_in';
+          if (!['signed_in', 'commercial_mail'].includes(connectionType)) {
+            this.showError('Select a valid Microsoft 365 connection.');
+            return false;
+          }
+          const commercialMail = connectionType === 'commercial_mail';
           const capabilityValues = Object.values(selectedMsGraphCapabilities);
-          if (!capabilityValues.some(Boolean)) {
+          if (commercialMail ? !selectedMsGraphCapabilities.get_my_messages && !selectedMsGraphCapabilities.send_mail : !capabilityValues.some(Boolean)) {
             this.showError('Enable at least one Microsoft Graph capability before continuing.');
             return false;
           }
           const mailConfig = this.getMsGraphMailSendConfiguration();
           const rawDelaySeconds = parseInt(document.getElementById('msgraph-mail-delay-seconds')?.value, 10);
-          if (selectedMsGraphCapabilities.send_mail && mailConfig.msgraph_mail_send_mode === MSGRAPH_MAIL_SEND_MODE_DRAFT_DELAYED) {
+          if (!commercialMail && selectedMsGraphCapabilities.send_mail && mailConfig.msgraph_mail_send_mode === MSGRAPH_MAIL_SEND_MODE_DRAFT_DELAYED) {
             if (Number.isNaN(rawDelaySeconds) || rawDelaySeconds < MSGRAPH_MIN_MAIL_DELAY_SECONDS || rawDelaySeconds > MSGRAPH_MAX_MAIL_DELAY_SECONDS) {
               this.showError('Microsoft Graph delayed mail delivery must be between 5 and 600 seconds.');
               return false;
@@ -4472,7 +4504,7 @@ export class PluginModalStepper {
           }
           const calendarConfig = this.getMsGraphCalendarSendConfiguration();
           const rawCalendarDelaySeconds = parseInt(document.getElementById('msgraph-calendar-delay-seconds')?.value, 10);
-          if (selectedMsGraphCapabilities.create_calendar_invite && calendarConfig.msgraph_calendar_send_mode === MSGRAPH_MAIL_SEND_MODE_DRAFT_DELAYED) {
+          if (!commercialMail && selectedMsGraphCapabilities.create_calendar_invite && calendarConfig.msgraph_calendar_send_mode === MSGRAPH_MAIL_SEND_MODE_DRAFT_DELAYED) {
             if (Number.isNaN(rawCalendarDelaySeconds) || rawCalendarDelaySeconds < MSGRAPH_MIN_CALENDAR_DELAY_SECONDS || rawCalendarDelaySeconds > MSGRAPH_MAX_CALENDAR_DELAY_SECONDS) {
               this.showError('Microsoft Graph delayed calendar invite delivery must be between 5 and 600 seconds.');
               return false;
@@ -6506,6 +6538,8 @@ export class PluginModalStepper {
       this.setSimpleChatCapabilities(additionalFields.simplechat_capabilities || plugin.simplechat_capabilities || null);
     } else if (this.isMsGraphType(plugin.type)) {
       const additionalFields = plugin.additionalFields || plugin.additional_fields || {};
+      const graphConnection = document.getElementById('msgraph-connection-type');
+      if (graphConnection) graphConnection.value = additionalFields.msgraph_connection || 'signed_in';
       this.setMsGraphCapabilities(additionalFields.msgraph_capabilities || plugin.msgraph_capabilities || null);
       this.setMsGraphMailSendConfiguration(additionalFields);
       this.setMsGraphCalendarSendConfiguration(additionalFields);
@@ -6820,6 +6854,7 @@ export class PluginModalStepper {
     } else if (this.isMsGraphType()) {
       endpoint = MSGRAPH_DEFAULT_ENDPOINT;
       auth.type = 'user';
+      additionalFields.msgraph_connection = document.getElementById('msgraph-connection-type')?.value ?? 'signed_in';
       additionalFields.msgraph_capabilities = this.getSelectedMsGraphCapabilities();
       Object.assign(additionalFields, this.getMsGraphMailSendConfiguration());
       Object.assign(additionalFields, this.getMsGraphCalendarSendConfiguration());
@@ -7625,12 +7660,13 @@ export class PluginModalStepper {
     }
 
     const capabilities = this.getSelectedMsGraphCapabilities();
+    const commercialMail = document.getElementById('msgraph-connection-type')?.value === 'commercial_mail';
     const enabledLabels = [];
     const disabledLabels = [];
 
     MSGRAPH_CAPABILITY_DEFINITIONS.forEach(definition => {
-      if (capabilities[definition.key]) {
-        enabledLabels.push(definition.label);
+      if (capabilities[definition.key] && (!commercialMail || ['get_my_messages', 'send_mail'].includes(definition.key))) {
+        enabledLabels.push(commercialMail && definition.key === 'send_mail' ? 'Create mail drafts' : definition.label);
       } else {
         disabledLabels.push(definition.label);
       }
@@ -7649,13 +7685,13 @@ export class PluginModalStepper {
       mailModeRow.classList.toggle('d-none', !mailEnabled);
     }
     if (modeElement) {
-      modeElement.textContent = this.formatMsGraphMailSendMode(mailConfig.msgraph_mail_send_mode);
+      modeElement.textContent = commercialMail ? 'Draft in Outlook' : this.formatMsGraphMailSendMode(mailConfig.msgraph_mail_send_mode);
     }
     if (delayElement) {
       delayElement.textContent = `${mailConfig.msgraph_mail_delay_seconds} seconds`;
     }
     if (delayRow) {
-      delayRow.classList.toggle('d-none', !mailEnabled || mailConfig.msgraph_mail_send_mode !== MSGRAPH_MAIL_SEND_MODE_DRAFT_DELAYED);
+      delayRow.classList.toggle('d-none', commercialMail || !mailEnabled || mailConfig.msgraph_mail_send_mode !== MSGRAPH_MAIL_SEND_MODE_DRAFT_DELAYED);
     }
 
     const calendarConfig = this.getMsGraphCalendarSendConfiguration();
@@ -7663,7 +7699,7 @@ export class PluginModalStepper {
     const calendarModeElement = document.getElementById('summary-msgraph-calendar-send-mode');
     const calendarDelayElement = document.getElementById('summary-msgraph-calendar-delay-seconds');
     const calendarDelayRow = document.getElementById('summary-msgraph-calendar-delay-row');
-    const calendarEnabled = Boolean(capabilities.create_calendar_invite);
+    const calendarEnabled = !commercialMail && Boolean(capabilities.create_calendar_invite);
     if (calendarModeRow) {
       calendarModeRow.classList.toggle('d-none', !calendarEnabled);
     }
@@ -7906,6 +7942,7 @@ export class PluginModalStepper {
         }, null, 2);
       } else if (isMsGraphType) {
         currentAdditionalFields = JSON.stringify({
+          msgraph_connection: document.getElementById('msgraph-connection-type')?.value ?? 'signed_in',
           msgraph_capabilities: this.getSelectedMsGraphCapabilities(),
           ...this.getMsGraphMailSendConfiguration(),
           ...this.getMsGraphCalendarSendConfiguration()

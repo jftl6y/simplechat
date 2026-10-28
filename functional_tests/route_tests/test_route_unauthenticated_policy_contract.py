@@ -65,6 +65,7 @@ LOGIN_ONLY_PATH_PREFIXES = (
 )
 
 USER_SESSION_PATH_PREFIXES = (
+    "/auth/commercial-graph/",
     "/conversation/",
     "/feedback/submit",
     "/feedback/my",

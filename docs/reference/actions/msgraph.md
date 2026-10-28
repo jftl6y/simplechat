@@ -14,6 +14,8 @@ audience: user
 
 Microsoft Graph uses the signed-in user's delegated permissions and the standard Graph endpoint. Its capabilities include profile, timezone, calendar events, calendar invites, mail read/update/send, directory search, user lookup, OneDrive listing, and security alerts available to the user.
 
+For a separately linked commercial mailbox, select **Linked commercial mail account** on the action. That connection supports reading messages and creating drafts only; review and send drafts in Outlook. Each SimpleChat user connects their own commercial account in Profile settings. It does not change the account used to sign in to SimpleChat.
+
 ## Why and when to use it
 
 Use Microsoft Graph when an agent should help with Microsoft 365 work in the user's own context: drafting mail, checking calendar context, finding people, or listing OneDrive items. Do not use it for app-wide mailbox automation unless delegated-user behavior is intended and consented. Keep mail/calendar sending modes conservative when users must review drafts before delivery.
@@ -34,6 +36,8 @@ Use Microsoft Graph when an agent should help with Microsoft 365 work in the use
 5. For calendar invites, choose the invite delivery behavior and delay seconds when applicable.
 6. Save and assign the action only to agents that need Microsoft 365 access.
 
+For commercial mail, choose the linked commercial connection and enable mail reading or draft creation. The commercial connection does not expose calendar, directory, automatic sending, or delayed sending, regardless of the other Graph delivery settings.
+
 ## Example prompts
 
 - "Draft a reply to the latest unread message from Contoso and leave it for my review."
@@ -53,4 +57,3 @@ Use Microsoft Graph when an agent should help with Microsoft 365 work in the use
 - [Actions reference index]({{ '/reference/actions/' | relative_url }})
 - [Agents administration]({{ '/admin/agents-actions/' | relative_url }})
 - [Governance]({{ '/admin/governance/' | relative_url }})
-
