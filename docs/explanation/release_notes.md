@@ -2,6 +2,16 @@
 
 For feature-focused and fix-focused drill-downs by version, see [Features by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/features) and [Fixes by Version](https://github.com/microsoft/simplechat/tree/main/docs/explanation/fixes).
 
+### **(v0.261.066)**
+
+#### Bug Fixes
+
+*   **Public Workspace Bulkloader Route Registration**
+    *   Registers the existing external public document endpoints so bulkloader uploads can reach the application's upload handler instead of an unmatched route.
+    *   Preserves the `ExternalApi` bearer-token role requirement, public-workspace feature gate, workspace permissions, and background processing behavior.
+    *   Adds isolated HTTP regression coverage and an explicit guarded-registration policy check.
+    *   (Ref: `app.py`, `route_external_public_documents.py`, [External Public Document Route Registration Fix](fixes/EXTERNAL_PUBLIC_DOCUMENT_ROUTE_REGISTRATION_FIX.md))
+
 ### **(v0.261.064)**
 
 #### Bug Fixes

@@ -2,7 +2,7 @@
 # test_route_blueprint_policy_inventory.py
 """
 Functional test for route blueprint policy inventory.
-Version: 0.250.055
+Version: 0.261.066
 Implemented in: 0.242.069
 
 This test ensures every SimpleChat route is assigned to a Blueprint-based
@@ -70,6 +70,7 @@ REGISTERED_BLUEPRINT_POLICIES = {
     "enhanced_citations": ("login_required", "user_required"),
     "external_health": (),
     "external_no_auth_health": (),
+    "external_public_documents": ("accesstoken_required",),
     "frontend_admin_settings": ("login_required", "admin_required"),
     "frontend_agents": ("login_required", "user_required"),
     "frontend_terms_of_use": (),
@@ -266,6 +267,36 @@ def test_explicit_app_route_exemptions_have_expected_security() -> None:
             )
 
 
+def test_external_public_documents_registrar_is_imported_and_guarded() -> None:
+    """Keep the bulkloader's routes reachable through the external bearer policy."""
+    tree = ast.parse(read_text(APP_DIR / "app.py"), filename="app.py")
+    imports = [
+        node for node in tree.body
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "route_external_public_documents"
+        and any(
+            name.name == "register_route_external_public_documents"
+            and name.asname is None
+            for name in node.names
+        )
+    ]
+    assert imports, "app.py must import the external public document registrar."
+    registrations = [
+        node.value for node in tree.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and dotted_name(node.value.func) == "register_route_blueprint"
+        and node.value.args
+        and isinstance(node.value.args[0], ast.Constant)
+        and node.value.args[0].value == "external_public_documents"
+    ]
+    assert len(registrations) == 1, "Register the external public document Blueprint exactly once."
+    assert [dotted_name(arg) for arg in registrations[0].args[1:]] == [
+        "register_route_external_public_documents",
+        "external_api_required_blueprint",
+    ], "External public documents must retain the shared bearer-token Blueprint guard."
+
+
 def test_public_routes_are_explicitly_listed() -> None:
     """Verify public route decisions are explicit and reviewed."""
     routes_by_path = {route.path: route for route in iter_route_functions() if route.path}
@@ -290,6 +321,7 @@ if __name__ == "__main__":
         test_blueprint_routes_have_registered_policy_classification,
         test_registered_route_blueprints_have_policy_classification,
         test_explicit_app_route_exemptions_have_expected_security,
+        test_external_public_documents_registrar_is_imported_and_guarded,
         test_public_routes_are_explicitly_listed,
     ]
     results = []

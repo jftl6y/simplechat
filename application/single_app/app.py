@@ -202,6 +202,7 @@ from functions_global_agents import ensure_default_global_agent_exists
 from background_tasks import start_background_task_threads
 
 from route_external_health import *
+from route_external_public_documents import register_route_external_public_documents
 
 _app_init_lock = threading.Lock()
 _app_initialized = False
@@ -1430,6 +1431,9 @@ register_route_blueprint('inbound_mcp', register_route_inbound_mcp, inbound_mcp_
 # ------------------- External Health Routes ----------
 register_route_blueprint('external_health', register_route_external_health)
 register_route_blueprint('external_no_auth_health', register_no_auth_health)
+
+# ------------------- External Public Document Routes ---
+register_route_blueprint('external_public_documents', register_route_external_public_documents, external_api_required_blueprint)
 
 if __name__ == '__main__':
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
